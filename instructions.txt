@@ -1,0 +1,131 @@
+DAK — Installation Instructions
+====================================================
+
+You are installing the DAK for a Claude Code user.
+Follow these steps exactly. Do NOT skip any step.
+
+STEP 1: Copy CLAUDE.md to the user's global Claude config
+----------------------------------------------------------
+Copy the file CLAUDE.md from this kit to: ~/.claude/CLAUDE.md
+
+If ~/.claude/CLAUDE.md already exists, APPEND the contents of this kit's
+CLAUDE.md to the end of the existing file (do not overwrite).
+
+STEP 2: Install the design system
+----------------------------------
+Copy the entire design-system/ directory to: ~/design-system/
+
+If ~/design-system/ already exists, overwrite it — this is the latest version.
+
+STEP 3: Install skills
+-----------------------
+Copy each directory inside skills/ to: ~/.claude/skills/
+
+  skills/owasp-security/    -->  ~/.claude/skills/owasp-security/
+
+If these skill directories already exist, overwrite them.
+
+STEP 4: Install the leaderboard hook
+--------------------------------------
+Copy hooks/push_stats.py to: ~/.claude/push_stats.py
+
+Then ask the user for their display name (for the leaderboard).
+
+Add this hook to ~/.claude/settings.json under the "hooks" key.
+If settings.json doesn't exist, create it. If it exists, merge carefully.
+
+{
+  "hooks": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "PLAYER_NAME=\"<their-name>\" python3 ~/.claude/push_stats.py"
+      }
+    ]
+  }
+}
+
+Replace <their-name> with the name they gave you.
+
+STEP 5: Install the project management template
+-------------------------------------------------
+Copy project-management.md to: ~/.claude/project-management-template.md
+
+This is a template. When the user starts a new project, Claude Code should
+copy this file into the project root as PROJECT.md and maintain it throughout
+development. The CLAUDE.md file already has instructions for this.
+
+STEP 6: Install supporting guides
+------------------------------------
+Copy these files to ~/.claude/ :
+
+  stack.md           -->  ~/.claude/stack.md
+  git-workflow.md    -->  ~/.claude/git-workflow.md
+  deploy.md          -->  ~/.claude/deploy.md
+  api-patterns.md    -->  ~/.claude/api-patterns.md
+
+Copy the templates directory:
+  templates/         -->  ~/.claude/templates/
+
+STEP 7: Set kit version
+--------------------------
+Write the version number from version.txt to: ~/.claude/.dak_version
+
+This allows the kit to auto-update itself when newer versions are available
+on the server.
+
+STEP 8: Verify installation
+------------------------------
+Check that ALL of these exist. If any are missing, go back and fix it:
+
+  [x] ~/.claude/CLAUDE.md
+  [x] ~/design-system/index.css
+  [x] ~/design-system/tokens.css
+  [x] ~/design-system/base.css
+  [x] ~/design-system/components.css
+  [x] ~/design-system/utilities.css
+  [x] ~/design-system/app.css
+  [x] ~/design-system/guide.md
+  [x] ~/.claude/skills/owasp-security/SKILL.md
+  [x] ~/.claude/push_stats.py
+  [x] ~/.claude/project-management-template.md
+  [x] ~/.claude/stack.md
+  [x] ~/.claude/git-workflow.md
+  [x] ~/.claude/deploy.md
+  [x] ~/.claude/api-patterns.md
+  [x] ~/.claude/templates/vibe-stats.md
+  [x] ~/.claude/templates/journey.md
+  [x] ~/.claude/templates/architecture.md
+  [x] ~/.claude/templates/pm-log.md
+  [x] ~/.claude/templates/reference/ArchitecturePage.vue
+  [x] ~/.claude/.dak_version
+  [x] ~/.claude/settings.json has the Stop hook configured
+
+Then run a quick test of the leaderboard hook:
+  PLAYER_NAME="<their-name>" python3 ~/.claude/push_stats.py --force
+
+If it runs without error, the installation is complete.
+
+STEP 9: Confirm to the user
+------------------------------
+Tell the user what was installed:
+
+  1. Global CLAUDE.md — tech stack, design, git, API, deployment defaults
+  2. EZ Design System (~/design-system/) — CSS framework, applied automatically
+  3. Guides: stack.md, git-workflow.md, deploy.md, api-patterns.md
+  4. Skills: /owasp-security for security reviews
+  5. Templates: vibe-stats, journey, architecture pages (auto-updated)
+  6. Leaderboard hook — reports usage stats + writes local data files
+  7. Project management template — living PROJECT.md
+  8. Auto-update — kit updates itself from the server hourly
+
+Tell them:
+  - The design system, tech stack, git workflow, and API patterns are
+    applied automatically to all new projects
+  - Run /owasp-security to review code for security issues
+  - Usage stats appear on the DAK leaderboard automatically
+  - Every project gets auto-updating /vibe-code, /journey, and /architecture pages
+  - Tell Claude to "start the project journal" when starting a new project
+  - The kit auto-updates — no need to re-download
+
+DONE. The kit is installed. Delete this zip file and the extracted folder.

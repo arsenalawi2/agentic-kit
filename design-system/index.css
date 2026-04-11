@@ -1,0 +1,14 @@
+/* ═══════════════════════════════════════════════════════════════
+   EZ Design System
+   Evolved from AI Radar + Al Sheraa — "Analytical precision"
+
+   Warm-tinted neutrals · Space Grotesk + DM Sans · Dark green accent
+
+   Usage: @import './design-system/index.css';
+   ═══════════════════════════════════════════════════════════════ */
+
+@import './tokens.css';
+@import './base.css';
+@import './components.css';
+@import './utilities.css';
+@import './app.css';

@@ -1,0 +1,530 @@
+<template>
+  <div class="arch-page">
+    <!-- ─── Hero ─── -->
+    <section class="hero">
+      <div class="hero-inner">
+        <div class="hero-badge">Enterprise Architecture Repository</div>
+        <h1 class="hero-title">Project Architecture</h1>
+        <p class="hero-sub">
+          Every project. Every technology. Every connection.
+          A live map of the personal infrastructure that runs the work.
+        </p>
+        <div class="hero-stats" v-if="data">
+          <div class="hero-stat">
+            <span class="hero-stat-value">{{ data.projects.length }}</span>
+            <span class="hero-stat-label">Projects</span>
+          </div>
+          <div class="hero-stat-divider"></div>
+          <div class="hero-stat">
+            <span class="hero-stat-value">{{ uniqueTechCount }}</span>
+            <span class="hero-stat-label">Technologies</span>
+          </div>
+          <div class="hero-stat-divider"></div>
+          <div class="hero-stat">
+            <span class="hero-stat-value">{{ uniqueLanguages.length }}</span>
+            <span class="hero-stat-label">Languages</span>
+          </div>
+          <div class="hero-stat-divider"></div>
+          <div class="hero-stat">
+            <span class="hero-stat-value">{{ runningCount }}</span>
+            <span class="hero-stat-label">Running Now</span>
+          </div>
+        </div>
+        <a href="#network" class="hero-cta">Explore the Graph &#x2192;</a>
+      </div>
+    </section>
+
+    <!-- ─── Inventory: Big Project Cards ─── -->
+    <section class="section">
+      <div class="section-inner wide">
+        <div class="section-label">Inventory</div>
+        <h2 class="section-title">Every project, every stack</h2>
+        <p class="section-desc">
+          Each card lists every technology used by a project, grouped by category. Click any technology to expand a detailed breakdown — what it does, how it's used, and which other projects share it.
+        </p>
+
+        <div class="category-tabs">
+          <button
+            v-for="cat in projectCategories"
+            :key="cat"
+            :class="['category-tab', { active: activeCategory === cat }]"
+            @click="activeCategory = cat"
+          >
+            {{ cat }}
+            <span class="category-tab-count">{{ projectsInCategory(cat).length }}</span>
+          </button>
+          <div class="expand-all-controls">
+            <button class="expand-all-btn" @click="expandAllProjects">Expand all</button>
+            <button class="expand-all-btn" @click="collapseAllProjects">Collapse all</button>
+          </div>
+        </div>
+
+        <div class="project-grid-big" v-if="data">
+          <div
+            v-for="proj in filteredProjects"
+            :key="proj.id"
+            class="project-card-big"
+            :class="{ 'is-running': proj.status === 'running', 'is-collapsed': !expandedProjects.has(proj.id) }"
+          >
+            <!-- Clickable header (always visible) -->
+            <button class="big-card-header-btn" @click="toggleProject(proj.id)">
+              <svg
+                class="card-chevron"
+                :class="{ open: expandedProjects.has(proj.id) }"
+                width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round"
+              >
+                <polyline points="9 6 15 12 9 18"/>
+              </svg>
+              <div class="big-card-header-content">
+                <div class="big-card-title-row">
+                  <h3 class="big-card-title">{{ proj.name }}</h3>
+                  <span :class="['big-card-status', `status-${proj.status.replace(/\s/g, '-')}`]">
+                    {{ proj.status }}
+                  </span>
+                </div>
+                <div class="big-card-meta-row">
+                  <span class="big-card-meta-item">{{ proj.category }}</span>
+                  <span class="big-card-meta-sep">·</span>
+                  <span class="big-card-meta-item">{{ flattenStack(proj.stack).length }} technologies</span>
+                  <span class="big-card-meta-sep" v-if="Object.keys(proj.ports).length">·</span>
+                  <span class="big-card-meta-item" v-if="Object.keys(proj.ports).length">
+                    {{ Object.keys(proj.ports).length }} port{{ Object.keys(proj.ports).length === 1 ? '' : 's' }}
+                  </span>
+                  <span class="big-card-path-inline">{{ proj.path }}</span>
+                </div>
+              </div>
+            </button>
+
+            <!-- Body: only when expanded -->
+            <transition name="card-expand">
+            <div v-if="expandedProjects.has(proj.id)" class="big-card-body">
+            <div class="big-card-header">
+              <p class="big-card-purpose">{{ proj.purpose }}</p>
+              <div class="big-card-ports" v-if="Object.keys(proj.ports).length">
+                <span
+                  v-for="(port, key) in proj.ports"
+                  :key="key"
+                  class="port-pill"
+                >
+                  {{ key }}: {{ port }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Stack groups: each group has clickable items -->
+            <div class="big-stack-grid">
+              <div
+                v-for="(items, cat) in nonEmptyStack(proj.stack)"
+                :key="cat"
+                class="big-stack-group"
+              >
+                <h4
+                  class="big-stack-heading"
+                  :style="{ borderColor: data.categories[cat]?.color }"
+                >
+                  {{ data.categories[cat]?.label || cat }}
+                </h4>
+                <div class="big-stack-items">
+                  <button
+                    v-for="item in items"
+                    :key="item"
+                    class="big-stack-item"
+                    :class="{ active: expandedTech === item && expandedFromProject === proj.id }"
+                    @click="toggleTechDetail(item, proj.id)"
+                  >
+                    <span class="big-stack-item-text">{{ item }}</span>
+                    <svg
+                      class="big-stack-chevron"
+                      width="11" height="11" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2.5"
+                      stroke-linecap="round" stroke-linejoin="round"
+                    >
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Inline expanded tech detail (per-card) -->
+            <transition name="tech-expand">
+              <div
+                v-if="expandedFromProject === proj.id && expandedTechDetail"
+                class="tech-detail"
+              >
+                <div class="tech-detail-header">
+                  <h3 class="tech-detail-title">{{ expandedTechDetail.name }}</h3>
+                  <span class="tech-detail-role">{{ expandedTechDetail.role }}</span>
+                  <button class="tech-detail-close" @click="expandedTech = null; expandedFromProject = null">×</button>
+                </div>
+                <p class="tech-detail-desc">{{ expandedTechDetail.desc }}</p>
+
+                <!-- Enterprise-level structured fields -->
+                <div class="tech-detail-grid">
+                  <div v-if="expandedTechDetail.vendor" class="tech-field">
+                    <div class="tech-field-label">Vendor</div>
+                    <div class="tech-field-value">{{ expandedTechDetail.vendor }}</div>
+                  </div>
+                  <div v-if="expandedTechDetail.license" class="tech-field">
+                    <div class="tech-field-label">License</div>
+                    <div class="tech-field-value">{{ expandedTechDetail.license }}</div>
+                  </div>
+                  <div v-if="expandedTechDetail.maturity" class="tech-field">
+                    <div class="tech-field-label">Maturity</div>
+                    <div class="tech-field-value">
+                      <span :class="['maturity-pill', `maturity-${expandedTechDetail.maturity.toLowerCase().replace(/\s/g, '-')}`]">
+                        {{ expandedTechDetail.maturity }}
+                      </span>
+                    </div>
+                  </div>
+                  <div v-if="expandedTechDetail.cost" class="tech-field">
+                    <div class="tech-field-label">Cost Model</div>
+                    <div class="tech-field-value">{{ expandedTechDetail.cost }}</div>
+                  </div>
+                  <div v-if="expandedTechDetail.lockInRisk" class="tech-field">
+                    <div class="tech-field-label">Lock-in Risk</div>
+                    <div class="tech-field-value">
+                      <span :class="['risk-pill', `risk-${expandedTechDetail.lockInRisk.toLowerCase().replace(/\s/g, '-')}`]">
+                        {{ expandedTechDetail.lockInRisk }}
+                      </span>
+                    </div>
+                  </div>
+                  <div v-if="expandedTechDetail.adoptionStatus" class="tech-field">
+                    <div class="tech-field-label">Adoption Status</div>
+                    <div class="tech-field-value">{{ expandedTechDetail.adoptionStatus }}</div>
+                  </div>
+                </div>
+
+                <div v-if="expandedTechDetail.specs?.length" class="tech-detail-specs">
+                  <div v-for="spec in expandedTechDetail.specs" :key="spec.label" class="tech-spec">
+                    <span class="tech-spec-label">{{ spec.label }}</span>
+                    <span class="tech-spec-value">{{ spec.value }}</span>
+                  </div>
+                </div>
+
+                <div v-if="expandedTechDetail.alternatives?.length" class="tech-detail-usage">
+                  <span class="tech-usage-label">Alternatives we could swap to</span>
+                  <div class="tech-usage-tags">
+                    <span v-for="t in expandedTechDetail.alternatives" :key="t" class="tech-usage-tag">{{ t }}</span>
+                  </div>
+                </div>
+
+                <div v-if="expandedTechDetail.dependsOn?.length" class="tech-detail-usage">
+                  <span class="tech-usage-label">Depends on</span>
+                  <div class="tech-usage-tags">
+                    <span v-for="t in expandedTechDetail.dependsOn" :key="t" class="tech-usage-tag">{{ t }}</span>
+                  </div>
+                </div>
+
+                <div class="tech-detail-usage">
+                  <span class="tech-usage-label">Used by {{ expandedTechDetail.projects.length }} project{{ expandedTechDetail.projects.length === 1 ? '' : 's' }} in this stack</span>
+                  <div class="tech-usage-tags">
+                    <span
+                      v-for="pid in expandedTechDetail.projects"
+                      :key="pid"
+                      class="tech-usage-tag"
+                    >
+                      {{ projectName(pid) }}
+                    </span>
+                  </div>
+                </div>
+
+                <div v-if="expandedTechDetail.usedFor?.length" class="tech-detail-usage">
+                  <span class="tech-usage-label">What it does in this stack</span>
+                  <div class="tech-usage-tags">
+                    <span v-for="t in expandedTechDetail.usedFor" :key="t" class="tech-usage-tag tech-usage-tag-purpose">{{ t }}</span>
+                  </div>
+                </div>
+
+                <div v-if="expandedTechDetail.docs" class="tech-detail-footer">
+                  <a :href="expandedTechDetail.docs" target="_blank" rel="noopener" class="tech-detail-link">
+                    Official docs &#x2192;
+                  </a>
+                </div>
+              </div>
+            </transition>
+            </div>
+            </transition>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Shared Tech Grid ─── -->
+    <section class="section section-alt">
+      <div class="section-inner wide">
+        <div class="section-label">Shared Technology</div>
+        <h2 class="section-title">What spans the most projects</h2>
+        <p class="section-desc">
+          Technologies sorted by how many projects depend on them. The most-used ones are the foundation; the long tail is project-specific. Click any to expand its details above.
+        </p>
+
+        <div class="shared-grid">
+          <div
+            v-for="entry in topSharedTech"
+            :key="entry.name"
+            class="shared-card"
+            @click="toggleTechDetail(entry.name); scrollToTechDetail()"
+          >
+            <div class="shared-card-top">
+              <span
+                class="shared-card-dot"
+                :style="{ background: entry.color }"
+              ></span>
+              <span class="shared-card-name">{{ entry.name }}</span>
+              <span class="shared-card-count">{{ entry.projects.length }}</span>
+            </div>
+            <div class="shared-card-projects">
+              <span
+                v-for="pid in entry.projects"
+                :key="pid"
+                class="shared-project-chip"
+              >
+                {{ projectName(pid) }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Network Graph ─── -->
+    <section class="section" id="network">
+      <div class="section-inner wide">
+        <div class="section-label">The Map</div>
+        <h2 class="section-title">Architecture network</h2>
+        <p class="section-desc">
+          Project nodes (large) connect to the technologies they use (small). Click any node to focus it — everything unrelated fades out. Filter by category to isolate parts of the stack.
+        </p>
+
+        <div class="graph-controls">
+          <button
+            v-for="cat in Object.keys(data?.categories || {})"
+            :key="cat"
+            :class="['graph-filter', { active: visibleCategories.has(cat) }]"
+            :style="{ borderColor: data.categories[cat].color }"
+            @click="toggleCategory(cat)"
+          >
+            <span
+              class="graph-filter-dot"
+              :style="{ background: data.categories[cat].color }"
+            ></span>
+            {{ data.categories[cat].label }}
+          </button>
+          <button class="graph-reset" @click="resetGraph">Reset View</button>
+        </div>
+
+        <div class="graph-wrap">
+          <div ref="graphContainer" class="graph-canvas"></div>
+          <div class="graph-legend">
+            <div class="graph-legend-item">
+              <span class="graph-legend-square legend-project"></span> Project
+            </div>
+            <div class="graph-legend-item">
+              <span class="graph-legend-circle"></span> Technology
+            </div>
+          </div>
+        </div>
+
+        <!-- Selected node detail panel -->
+        <div v-if="selectedNode" class="node-detail">
+          <button class="node-detail-close" @click="clearSelection">×</button>
+          <div class="node-detail-label">{{ selectedNode.kind === 'project' ? 'Project' : 'Technology' }}</div>
+          <div class="node-detail-name">{{ selectedNode.name }}</div>
+          <div v-if="selectedNode.kind === 'project'">
+            <p class="node-detail-purpose">{{ selectedNode.project.purpose }}</p>
+            <div class="node-detail-list-label">Tech stack ({{ flattenStack(selectedNode.project.stack).length }})</div>
+            <div class="node-detail-list">
+              <span
+                v-for="tech in flattenStack(selectedNode.project.stack)"
+                :key="tech"
+                class="node-detail-pill"
+              >
+                {{ tech }}
+              </span>
+            </div>
+          </div>
+          <div v-else>
+            <div class="node-detail-list-label">Used by {{ techToProjects.get(selectedNode.name)?.length || 0 }} project(s)</div>
+            <div class="node-detail-list">
+              <span
+                v-for="pid in techToProjects.get(selectedNode.name) || []"
+                :key="pid"
+                class="node-detail-pill"
+              >
+                {{ projectName(pid) }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Sankey-style flow ─── -->
+    <section class="section section-alt">
+      <div class="section-inner wide">
+        <div class="section-label">Cross-Project Flow</div>
+        <h2 class="section-title">Projects → technologies</h2>
+        <p class="section-desc">
+          A different angle on the same data: projects on the left, the top {{ flowTopN }} most-used technologies on the right, curves between them where there's a dependency. Hover or click any node to highlight just its connections.
+        </p>
+
+        <div class="flow-shell">
+          <div ref="flowContainer" class="flow-canvas"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Stats Footer ─── -->
+    <section class="section">
+      <div class="section-inner wide">
+        <div class="section-label">By the Numbers</div>
+        <h2 class="section-title">Architecture at a glance</h2>
+
+        <div class="numbers-grid">
+          <div class="number-card">
+            <div class="number-card-value">{{ data?.projects.length || 0 }}</div>
+            <div class="number-card-label">Total Projects</div>
+          </div>
+          <div class="number-card">
+            <div class="number-card-value">{{ uniqueTechCount }}</div>
+            <div class="number-card-label">Unique Technologies</div>
+          </div>
+          <div class="number-card">
+            <div class="number-card-value">{{ uniqueLanguages.length }}</div>
+            <div class="number-card-label">Programming Languages</div>
+          </div>
+          <div class="number-card">
+            <div class="number-card-value">{{ uniqueDatabases.length }}</div>
+            <div class="number-card-label">Database Engines</div>
+          </div>
+          <div class="number-card">
+            <div class="number-card-value">{{ uniqueAIProviders.length }}</div>
+            <div class="number-card-label">AI Providers</div>
+          </div>
+          <div class="number-card">
+            <div class="number-card-value">{{ runningCount }}</div>
+            <div class="number-card-label">Currently Running</div>
+          </div>
+        </div>
+
+        <div class="lang-breakdown">
+          <h3 class="lang-breakdown-title">Languages</h3>
+          <div class="lang-bars">
+            <div
+              v-for="lang in languageBreakdown"
+              :key="lang.name"
+              class="lang-bar-row"
+            >
+              <div class="lang-bar-name">{{ lang.name }}</div>
+              <div class="lang-bar-track">
+                <div
+                  class="lang-bar-fill"
+                  :style="{ width: (lang.count / langMax * 100) + '%' }"
+                ></div>
+              </div>
+              <div class="lang-bar-count">{{ lang.count }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── How This Was Built ─── -->
+    <section class="section section-alt">
+      <div class="section-inner">
+        <div class="section-label">Meta</div>
+        <h2 class="section-title">How this page was built</h2>
+        <p class="section-desc">
+          Every line of this page was written by Claude Code in a single Discord-driven session.
+          The user asked for an "enterprise architecture repository" with a network graph; Claude scanned every project on the Mac, generated the data, scaffolded the Vue app, wired up vis-network and a d3 flow chart, and exposed it via Tailscale Funnel.
+        </p>
+
+        <div class="vibe-stats">
+          <div class="vibe-stat">
+            <div class="vibe-stat-value">1</div>
+            <div class="vibe-stat-label">Discord session</div>
+          </div>
+          <div class="vibe-stat">
+            <div class="vibe-stat-value">~12</div>
+            <div class="vibe-stat-label">Prompts to Claude</div>
+          </div>
+          <div class="vibe-stat">
+            <div class="vibe-stat-value">{{ data?.projects.length || 0 }}</div>
+            <div class="vibe-stat-label">Projects scanned</div>
+          </div>
+          <div class="vibe-stat">
+            <div class="vibe-stat-value">~2k</div>
+            <div class="vibe-stat-label">Lines of Vue / CSS</div>
+          </div>
+          <div class="vibe-stat">
+            <div class="vibe-stat-value">Opus 4.6</div>
+            <div class="vibe-stat-label">Model</div>
+          </div>
+          <div class="vibe-stat">
+            <div class="vibe-stat-value">0</div>
+            <div class="vibe-stat-label">Lines hand-written</div>
+          </div>
+        </div>
+
+        <div class="meta-pipeline">
+          <h3 class="meta-pipeline-title">How the data is collected</h3>
+          <div class="meta-steps">
+            <div class="meta-step">
+              <div class="meta-step-num">1</div>
+              <div class="meta-step-content">
+                <h4 class="meta-step-title">Scan</h4>
+                <p class="meta-step-desc">
+                  <code>scripts/scan_projects.py</code> walks every included project directory and reads <code>package.json</code>, <code>requirements.txt</code>, <code>pyproject.toml</code>, and <code>docker-compose.yml</code>.
+                  It detects languages (from manifest types + tsconfig presence), frontend frameworks, backend frameworks, databases, AI provider SDKs, build tools, and auth libraries.
+                </p>
+              </div>
+            </div>
+            <div class="meta-arrow">↓</div>
+            <div class="meta-step">
+              <div class="meta-step-num">2</div>
+              <div class="meta-step-content">
+                <h4 class="meta-step-title">Curate</h4>
+                <p class="meta-step-desc">
+                  Auto-detection misses cross-cutting infrastructure (Tailscale, WhatsApp Business API, Zep Cloud as a memory backend, Docker volumes), and it can't know <em>purpose</em>, <em>port assignments</em>, or current <em>status</em>. Those live in <code>data/tech_stack.json</code> as a hand-curated layer that's preserved across re-scans.
+                </p>
+              </div>
+            </div>
+            <div class="meta-arrow">↓</div>
+            <div class="meta-step">
+              <div class="meta-step-num">3</div>
+              <div class="meta-step-content">
+                <h4 class="meta-step-title">Render</h4>
+                <p class="meta-step-desc">
+                  The Vue page fetches <code>/tech_stack.json</code> on mount and computes everything else live: technology→project mappings, shared-tech rankings, network graph nodes/edges, sankey flow ranks, language breakdowns. No backend, no API — one JSON file is the entire source of truth.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="meta-stack-callout">
+          <div class="meta-stack-title">Built with</div>
+          <div class="meta-stack-tags">
+            <span class="meta-stack-tag">Vue 3 (Composition API)</span>
+            <span class="meta-stack-tag">Vite</span>
+            <span class="meta-stack-tag">vis-network</span>
+            <span class="meta-stack-tag">d3.js</span>
+            <span class="meta-stack-tag">Space Grotesk + DM Sans</span>
+            <span class="meta-stack-tag">Tailscale Funnel</span>
+            <span class="meta-stack-tag">Claude Code (Opus 4.6)</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <footer class="page-footer">
+      <div class="footer-inner">
+        <div class="footer-meta">Generated {{ data?.generated_at }} · Auto-detect + hand-curated · Refresh by re-running <code>python3 scripts/scan_projects.py</code></div>
+      </div>
+    </footer>
+  </div>
+</template>
