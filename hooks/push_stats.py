@@ -1237,7 +1237,10 @@ def push(stats):
     req = urllib.request.Request(
         f"{LEADERBOARD_URL.rstrip('/')}/api/leaderboard/submit",
         data=data,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": f"DAK-LeaderboardPush/{SCRIPT_VERSION}",
+        },
         method="POST",
     )
     urllib.request.urlopen(req, timeout=15, context=ctx)
@@ -1277,7 +1280,8 @@ def self_update():
         ctx = _ssl_ctx()
 
         # 1. Update push_stats.py itself
-        req = urllib.request.Request(f"{LEADERBOARD_URL.rstrip('/')}/push_stats.py", method="GET")
+        _hdrs = {"User-Agent": f"DAK-LeaderboardPush/{SCRIPT_VERSION}"}
+        req = urllib.request.Request(f"{LEADERBOARD_URL.rstrip('/')}/push_stats.py", method="GET", headers=_hdrs)
         resp = urllib.request.urlopen(req, timeout=10, context=ctx)
         remote_code = resp.read()
 
@@ -1301,7 +1305,8 @@ def _update_kit(ctx):
 
     try:
         # Check remote version
-        req = urllib.request.Request(f"{LEADERBOARD_URL.rstrip('/')}/dak-version", method="GET")
+        _hdrs = {"User-Agent": f"DAK-LeaderboardPush/{SCRIPT_VERSION}"}
+        req = urllib.request.Request(f"{LEADERBOARD_URL.rstrip('/')}/dak-version", method="GET", headers=_hdrs)
         resp = urllib.request.urlopen(req, timeout=5, context=ctx)
         remote_version = resp.read().decode().strip()
 
@@ -1314,7 +1319,7 @@ def _update_kit(ctx):
             return
 
         # Download and extract the kit update
-        req = urllib.request.Request(f"{LEADERBOARD_URL.rstrip('/')}/dak-update.zip", method="GET")
+        req = urllib.request.Request(f"{LEADERBOARD_URL.rstrip('/')}/dak-update.zip", method="GET", headers=_hdrs)
         resp = urllib.request.urlopen(req, timeout=30, context=ctx)
         zip_data = resp.read()
 
