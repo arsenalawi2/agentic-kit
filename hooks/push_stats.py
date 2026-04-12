@@ -856,7 +856,7 @@ def collect_all_stats():
 
     # Recent prompts: last 100, sorted newest first
     all_prompts.sort(key=lambda x: x["timestamp"], reverse=True)
-    totals["recent_prompts"] = all_prompts[:100]
+    totals["recent_prompts"] = all_prompts[:500]
 
     # Build projects_data sorted by cost
     totals["projects_data"] = sorted(
