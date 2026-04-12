@@ -10,7 +10,7 @@ Usage:
 
 Env vars:
   PLAYER_NAME       — your display name on the leaderboard (required)
-  LEADERBOARD_URL   — leaderboard endpoint (default: https://hadis-mac-mini.tailf8f871.ts.net:10000)
+  LEADERBOARD_URL   — leaderboard endpoint (default: https://leaderboard.hadismac.com)
   PUSH_INTERVAL     — seconds between pushes (default: 300 = 5 min)
 """
 
@@ -55,9 +55,9 @@ def _is_after_hours(ts):
     return local.hour < 9 or local.hour >= 18
 
 # ── Config ──
-SCRIPT_VERSION = "2.0.0"
+SCRIPT_VERSION = "2.1.0"
 PLAYER_NAME = os.environ.get("PLAYER_NAME", "")
-LEADERBOARD_URL = os.environ.get("LEADERBOARD_URL", "https://hadis-mac-mini.tailf8f871.ts.net:10000")
+LEADERBOARD_URL = os.environ.get("LEADERBOARD_URL", "https://leaderboard.hadismac.com")
 PUSH_INTERVAL = int(os.environ.get("PUSH_INTERVAL", "300"))
 THROTTLE_FILE = Path.home() / ".claude" / ".leaderboard_last_push"
 
@@ -857,6 +857,7 @@ def collect_all_stats():
     # Recent prompts: last 100, sorted newest first
     all_prompts.sort(key=lambda x: x["timestamp"], reverse=True)
     totals["recent_prompts"] = all_prompts[:500]
+    totals["script_version"] = SCRIPT_VERSION
 
     # Build projects_data sorted by cost
     totals["projects_data"] = sorted(
