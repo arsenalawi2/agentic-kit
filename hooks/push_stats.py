@@ -634,8 +634,9 @@ def merge_daily_buckets(target, source):
 
 def compute_quality_score(stats):
     """
-    Compute 0-110 quality score.
-    Seven base components (100 pts) + over-cap bonus (up to +10).
+    Compute 0-115 quality score.
+    Seven base components (100 pts) + over-cap bonus (up to +10)
+    + three new bonus components: volume (+3), consistency (+2), dedication (+3).
 
     Over-cap bonus: for each of the 5 bonusable components, if the
     actual-to-cap ratio is ≥ 2, add min(2, log10(ratio) * 2) bonus pts.
@@ -643,7 +644,7 @@ def compute_quality_score(stats):
     rolling 30-day cost. Tool rate and cache rate have hard real-world
     or mathematical ceilings, so no over-cap bonus.
 
-    Total bonus capped at +10, total score capped at 110.
+    Total bonus capped at +15, total score capped at 115.
     """
     score = 0.0
     bonus = 0.0
@@ -708,9 +709,50 @@ def compute_quality_score(stats):
     score += min(10, (rolling_cost / 500) * 10)
     bonus += _over_cap_bonus(rolling_cost / 500)
 
-    # Total bonus capped at +10, final score capped at 110.
-    bonus = min(10.0, bonus)
-    return round(min(110, score + bonus))
+    # 8. Volume bonus (0-3 pts) — rewards raw output
+    volume_lines = stats.get("total_lines_written", 0)
+    bonus += min(3, volume_lines / 100000)  # 100K=+1, 200K=+2, 300K+=+3
+
+    # 9. Consistency bonus (0-2 pts) — rewards regular weekly engagement
+    from collections import defaultdict
+    active_weeks = set()
+    for day_key in stats.get("daily_buckets", {}):
+        try:
+            d = datetime.strptime(day_key, "%Y-%m-%d")
+            # ISO week number as (year, week)
+            active_weeks.add(d.isocalendar()[:2])
+        except (ValueError, TypeError):
+            pass
+    consistency_weeks = len(active_weeks)
+    bonus += min(2, consistency_weeks / 5)  # 5 weeks=+1, 10+=+2
+
+    # 10a. After-hours bonus (0-1 pt)
+    total_prompts_all = sum(b.get("prompts", 0) for b in stats.get("daily_buckets", {}).values())
+    after_hours_all = sum(b.get("after_hours_prompts", 0) for b in stats.get("daily_buckets", {}).values())
+    after_pct = (after_hours_all / total_prompts_all * 100) if total_prompts_all > 0 else 0
+    bonus += min(1, after_pct / 30)  # 30%+ after-hours = +1
+
+    # 10b. Weekend work bonus (0-1 pt)
+    weekend_days = 0
+    for day_key in stats.get("daily_buckets", {}):
+        try:
+            d = datetime.strptime(day_key, "%Y-%m-%d")
+            if d.weekday() >= 5:  # Saturday=5, Sunday=6
+                b = stats["daily_buckets"][day_key]
+                if (b.get("active_sec", 0) > 0 or b.get("prompts", 0) > 0):
+                    weekend_days += 1
+        except (ValueError, TypeError):
+            pass
+    bonus += min(1, weekend_days / 8)  # 8+ weekend days = +1
+
+    # 10c. Extra hours bonus (0-1 pt) — hours beyond baseline
+    total_active_hours = stats.get("total_active_hours", 0)
+    # Reward anyone with 150+ active hours
+    bonus += min(1, total_active_hours / 150)  # 150h+ = +1
+
+    # Total bonus capped at +15, final score capped at 115.
+    bonus = min(15.0, bonus)
+    return round(min(115, score + bonus))
 
 
 def collect_all_stats():
