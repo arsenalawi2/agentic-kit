@@ -1,0 +1,33 @@
+{
+  "groups": [
+    {
+      "label": "Frontend",
+      "items": [
+        { "name": "Vue 3", "version": "^3.5", "note": "SPA framework" },
+        { "name": "Vite", "version": "^5.4", "note": "build + dev server" },
+        { "name": "Vue Router", "version": "^4.4" }
+      ]
+    },
+    {
+      "label": "Backend",
+      "items": [
+        { "name": "FastAPI", "version": ">=0.115" },
+        { "name": "SQLAlchemy", "version": "2.x async" },
+        { "name": "Pydantic", "version": "v2" }
+      ]
+    },
+    {
+      "label": "Database",
+      "items": [
+        { "name": "PostgreSQL", "version": "16", "note": "via Docker" }
+      ]
+    },
+    {
+      "label": "Platform",
+      "items": [
+        { "name": "Docker Compose", "note": "dev + deploy" },
+        { "name": "Design system", "note": "~/design-system (EZ)" }
+      ]
+    }
+  ]
+}

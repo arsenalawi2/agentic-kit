@@ -1,0 +1,45 @@
+# {{PROJECT_NAME}} — development stack.
+# Ports from the DAK convention: frontend 3xxx, backend 8xxx, db 54xx.
+# Replace the XXX placeholders during `dak init` or by hand.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app
+    ports:
+      - "54XX:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/app
+      DETAILED_PASSWORD: ${DETAILED_PASSWORD}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    ports:
+      - "8XXX:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    # Mount repo read-only if backend needs to walk its own source tree
+    # (e.g. to produce /api/repo-stats). Delete if not used.
+    # volumes:
+    #   - .:/repo:ro
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3XXX:3400"
+    depends_on:
+      - backend
+
+volumes:
+  db-data:

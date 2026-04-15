@@ -1,0 +1,9 @@
+{
+  "phases": [
+    {
+      "number": 1,
+      "title": "Project scaffolded",
+      "body": "Started from the DAK template via `dak init`. Vue 3 + FastAPI + Postgres + Docker, with the four auto-pages wired from day one."
+    }
+  ]
+}

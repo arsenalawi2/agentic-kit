@@ -231,6 +231,8 @@ docker system df
 
 Or copy the design-system/ directory into your project and import from there.
 
+**Currency display:** All financial values use AED with the UAE Dirham symbol font (`design-system/fonts/dirham-symbol.woff2`). See `design-system/dirham-symbol.md` for setup and patterns. Backend stores USD; convert on the frontend using the fixed peg rate (3.6725).
+
 ## Common Patterns
 
 ### Full-Stack Project Setup

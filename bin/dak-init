@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+#
+# dak-init — scaffold a fresh DAK project in one command.
+#
+# Usage:
+#   dak-init <project-name> [target-dir]
+#
+# Behaviour:
+#   1. Copies ~/.claude/dak-template/ into <target-dir>/<project-name>/
+#   2. Substitutes {{PROJECT_NAME}} / {{PROJECT_NAME_SLUG}} / {{DATE}} / {{PREFIX}}
+#      across all files that need it.
+#   3. Auto-assigns a port triple (3xxx frontend / 8xxx backend / 54xx db)
+#      by finding the next free set starting from the highest currently
+#      listening in that range.
+#   4. `git init`, initial commit ("chore: dak init"), first README/PROJECT.md
+#      rendered.
+#   5. Prints next-steps.
+#
+# Requires: bash, git, python3 (just for port scan).
+
+set -euo pipefail
+
+TEMPLATE_DIR="$HOME/.claude/dak-template"
+
+die() { echo "dak-init: $*" >&2; exit 1; }
+
+[[ -d "$TEMPLATE_DIR" ]] || die "template missing: $TEMPLATE_DIR"
+
+NAME="${1:-}"
+[[ -n "$NAME" ]] || die "usage: dak-init <project-name> [target-dir]"
+TARGET_BASE="${2:-$PWD}"
+
+# Slugify name for docker / npm / file paths.
+SLUG=$(echo "$NAME" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-')
+[[ -n "$SLUG" ]] || die "could not slugify name '$NAME'"
+
+TARGET="$TARGET_BASE/$SLUG"
+[[ -e "$TARGET" ]] && die "$TARGET already exists"
+
+# Short uppercase prefix for env vars — first 3 alnum chars.
+PREFIX=$(echo "$SLUG" | tr -cd 'a-z0-9' | head -c 4 | tr '[:lower:]' '[:upper:]')
+DATE=$(date -u +%Y-%m-%d)
+
+# ─── Port assignment ─────────────────────────────────────────────
+# Find next free frontend port in 3001-3999, backend 8001-8999, db 5432-5499.
+next_free_port() {
+  local start="$1" end="$2"
+  python3 - "$start" "$end" <<'PY'
+import socket, sys
+start, end = int(sys.argv[1]), int(sys.argv[2])
+for p in range(start, end + 1):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("127.0.0.1", p))
+            print(p); sys.exit(0)
+        except OSError:
+            continue
+sys.exit(f"no free port in {start}-{end}")
+PY
+}
+
+FRONTEND_PORT=$(next_free_port 3100 3999)
+BACKEND_PORT=$(next_free_port  8100 8999)
+DB_PORT=$(next_free_port       5432 5499)
+
+echo "dak-init: scaffolding $NAME ($SLUG) at $TARGET"
+echo "          frontend=$FRONTEND_PORT  backend=$BACKEND_PORT  db=$DB_PORT"
+
+# ─── Copy template ───────────────────────────────────────────────
+cp -R "$TEMPLATE_DIR" "$TARGET"
+
+# ─── Substitute placeholders ─────────────────────────────────────
+# We use perl for cross-platform in-place sed.
+substitute() {
+  local key="$1" val="$2"
+  # Escape forward slashes and ampersands for perl.
+  local esc=$(printf '%s' "$val" | sed -e 's/[&\\/]/\\&/g')
+  find "$TARGET" -type f \
+    ! -path '*/node_modules/*' \
+    ! -path '*/.git/*' \
+    ! -name '*.woff*' ! -name '*.ttf' ! -name '*.png' ! -name '*.jpg' \
+    -exec perl -i -pe "s/\\Q{{$key}}\\E/$esc/g" {} +
+}
+
+substitute PROJECT_NAME       "$NAME"
+substitute PROJECT_NAME_SLUG  "$SLUG"
+substitute PREFIX             "$PREFIX"
+substitute DATE               "$DATE"
+
+# ─── Fix port placeholders in docker-compose.yml ─────────────────
+# docker-compose.yml has 3XXX/8XXX/54XX — replace with chosen ports.
+perl -i -pe "s/\"3XXX:/\"$FRONTEND_PORT:/g; s/\"8XXX:/\"$BACKEND_PORT:/g; s/\"54XX:/\"$DB_PORT:/g" \
+  "$TARGET/docker-compose.yml"
+# README has 3XXX / 8XXX / 54XX too.
+perl -i -pe "s/3XXX/$FRONTEND_PORT/g; s/8XXX/$BACKEND_PORT/g; s/54XX/$DB_PORT/g" \
+  "$TARGET/README.md"
+
+# ─── Git init + first commit ─────────────────────────────────────
+cd "$TARGET"
+git init -q
+git add -A
+git -c user.name="DAK init" -c user.email="dak@local" commit -q -m "chore: dak init ($NAME)"
+
+# ─── Next steps ───────────────────────────────────────────────────
+cat <<EOF
+
+✔ $NAME scaffolded at $TARGET
+
+Next:
+  cd $SLUG
+  cp .env.example .env     # set DETAILED_PASSWORD
+  docker compose up --build
+
+Then visit:
+  Frontend:  http://localhost:$FRONTEND_PORT
+  Backend:   http://localhost:$BACKEND_PORT  (health: /healthz)
+  Postgres:  localhost:$DB_PORT
+
+Read PROJECT.md and CONVENTIONS.md before the first feature.
+
+EOF

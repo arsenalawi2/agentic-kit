@@ -69,13 +69,25 @@ STEP 6: Install supporting guides
 ------------------------------------
 Copy these files to ~/.claude/ :
 
-  stack.md           -->  ~/.claude/stack.md
-  git-workflow.md    -->  ~/.claude/git-workflow.md
-  deploy.md          -->  ~/.claude/deploy.md
-  api-patterns.md    -->  ~/.claude/api-patterns.md
+  stack.md                  -->  ~/.claude/stack.md
+  stack-decisions.md        -->  ~/.claude/stack-decisions.md
+  conventions-template.md   -->  ~/.claude/conventions-template.md
+  git-workflow.md           -->  ~/.claude/git-workflow.md
+  deploy.md                 -->  ~/.claude/deploy.md
+  api-patterns.md           -->  ~/.claude/api-patterns.md
 
 Copy the templates directory:
   templates/         -->  ~/.claude/templates/
+
+Copy the DAK project starter template:
+  dak-template/      -->  ~/.claude/dak-template/
+
+Copy the DAK CLI tools and put them on PATH:
+  bin/dak-init       -->  ~/.claude/bin/dak-init   (chmod +x)
+  bin/dak-sync       -->  ~/.claude/bin/dak-sync   (chmod +x)
+
+Then add ~/.claude/bin to the user's PATH — append to ~/.zshrc or ~/.bashrc:
+  export PATH="$HOME/.claude/bin:$PATH"
 
 STEP 7: Set kit version
 --------------------------
@@ -96,6 +108,8 @@ Check that ALL of these exist. If any are missing, go back and fix it:
   [x] ~/design-system/utilities.css
   [x] ~/design-system/app.css
   [x] ~/design-system/guide.md
+  [x] ~/design-system/dirham-symbol.md
+  [x] ~/design-system/fonts/dirham-symbol.woff2
   [x] ~/.claude/skills/owasp-security/SKILL.md
   [x] ~/.claude/push_stats.py
   [x] ~/.claude/project-management-template.md
@@ -108,6 +122,14 @@ Check that ALL of these exist. If any are missing, go back and fix it:
   [x] ~/.claude/templates/architecture.md
   [x] ~/.claude/templates/pm-log.md
   [x] ~/.claude/templates/reference/ArchitecturePage.vue
+  [x] ~/.claude/stack-decisions.md
+  [x] ~/.claude/conventions-template.md
+  [x] ~/.claude/dak-template/backend/app.py
+  [x] ~/.claude/dak-template/frontend/src/main.js
+  [x] ~/.claude/bin/dak-init (executable)
+  [x] ~/.claude/bin/dak-sync (executable)
+  [x] ~/design-system/components/Aed.vue
+  [x] ~/design-system/constants.js
   [x] ~/.claude/.dak_version
   [x] ~/.claude/settings.json has the Stop hook configured
   [x] Hourly cron is set up (verify with: crontab -l | grep push_stats)

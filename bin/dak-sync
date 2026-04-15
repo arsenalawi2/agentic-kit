@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+#
+# dak-sync — pull the latest DAK auto-page templates into an existing
+# project without touching its data.
+#
+# Updates:
+#   frontend/src/views/Journey.vue
+#   frontend/src/views/Architecture.vue
+#   frontend/src/views/VibeCode.vue
+#   frontend/src/views/PmLog.vue
+#   backend/auth.py
+#   backend/logging_config.py
+#
+# Does NOT touch:
+#   frontend/public/*.json  (user data)
+#   PROJECT.md / CONVENTIONS.md (user content)
+#   docker-compose.yml (user ports)
+#
+# Usage (from project root):
+#   dak-sync           # diff-preview
+#   dak-sync --apply   # actually copy
+
+set -euo pipefail
+
+TEMPLATE_DIR="$HOME/.claude/dak-template"
+[[ -d "$TEMPLATE_DIR" ]] || { echo "template missing: $TEMPLATE_DIR" >&2; exit 1; }
+
+APPLY=0
+[[ "${1:-}" == "--apply" ]] && APPLY=1
+
+# Safety: must be run from a DAK-shaped project root.
+[[ -f "PROJECT.md" && -d "frontend/src/views" && -d "backend" ]] || {
+  echo "dak-sync: run this from a DAK project root (PROJECT.md + frontend/ + backend/ required)" >&2
+  exit 1
+}
+
+FILES=(
+  "frontend/src/views/Journey.vue"
+  "frontend/src/views/Architecture.vue"
+  "frontend/src/views/VibeCode.vue"
+  "frontend/src/views/PmLog.vue"
+  "backend/auth.py"
+  "backend/logging_config.py"
+)
+
+for f in "${FILES[@]}"; do
+  src="$TEMPLATE_DIR/$f"
+  [[ -f "$src" ]] || { echo "  skip (template missing): $f"; continue; }
+  if [[ $APPLY -eq 1 ]]; then
+    mkdir -p "$(dirname "$f")"
+    cp "$src" "$f"
+    echo "  updated: $f"
+  else
+    if [[ -f "$f" ]]; then
+      if diff -q "$src" "$f" >/dev/null; then
+        echo "  unchanged: $f"
+      else
+        echo "  would update: $f"
+      fi
+    else
+      echo "  would create: $f"
+    fi
+  fi
+done
+
+if [[ $APPLY -eq 0 ]]; then
+  echo
+  echo "(preview only — rerun with --apply to copy)"
+fi

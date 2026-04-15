@@ -18,10 +18,12 @@ import hashlib
 import json
 import math
 import os
+import socket
 import sys
 import ssl
 import time
 import urllib.request
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -55,11 +57,69 @@ def _is_after_hours(ts):
     return local.hour < 9 or local.hour >= 18
 
 # ── Config ──
-SCRIPT_VERSION = "2.2.0"
+# 2.3.0: include machine_id + hostname so the leaderboard can keep per-machine
+# rows for the same player name (fixes stats overwrite when same PLAYER_NAME is
+# used on multiple machines — prior versions clobbered whoever pushed last).
+SCRIPT_VERSION = "2.4.0"
 PLAYER_NAME = os.environ.get("PLAYER_NAME", "")
 LEADERBOARD_URL = os.environ.get("LEADERBOARD_URL", "https://leaderboard.hadismac.com")
 PUSH_INTERVAL = int(os.environ.get("PUSH_INTERVAL", "300"))
 THROTTLE_FILE = Path.home() / ".claude" / ".leaderboard_last_push"
+MACHINE_ID_FILE = Path.home() / ".claude" / ".machine-id"
+HOSTNAME_FILE = Path.home() / ".claude" / ".machine-hostname"
+
+
+def get_machine_id():
+    """
+    Return a stable per-machine UUID, creating one on first invocation.
+    The leaderboard uses (PLAYER_NAME, machine_id) as its primary key, so two
+    machines running as the same player don't overwrite each other.
+    """
+    try:
+        if MACHINE_ID_FILE.exists():
+            val = MACHINE_ID_FILE.read_text().strip()
+            if val:
+                return val
+        MACHINE_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
+        new_id = uuid.uuid4().hex
+        MACHINE_ID_FILE.write_text(new_id)
+        return new_id
+    except OSError:
+        # Filesystem issue — derive a stable ID from hostname so we still
+        # avoid collisions, even without persistence.
+        try:
+            host = socket.gethostname() or "unknown"
+        except Exception:
+            host = "unknown"
+        return f"host-{host}"
+
+
+def get_hostname():
+    """
+    Return a stable, human-readable hostname. Prefers ~/.claude/.machine-hostname
+    if present (written by this script on the real host) — this lets the Docker
+    dashboard container, whose socket.gethostname() returns an ephemeral container
+    ID like '9831b9db998f', surface the real host's name instead.
+    """
+    try:
+        if HOSTNAME_FILE.exists():
+            val = HOSTNAME_FILE.read_text().strip()
+            if val:
+                return val
+    except OSError:
+        pass
+    try:
+        host = socket.gethostname() or ""
+    except Exception:
+        host = ""
+    # Persist for containers/services to read (best-effort only).
+    if host:
+        try:
+            HOSTNAME_FILE.parent.mkdir(parents=True, exist_ok=True)
+            HOSTNAME_FILE.write_text(host)
+        except OSError:
+            pass
+    return host
 
 CLAUDE_DIR = Path.home() / ".claude"
 PROJECTS_DIR = CLAUDE_DIR / "projects"
@@ -319,6 +379,7 @@ def parse_jsonl(filepath):
                 "cache_read": 0,
                 "cache_write": 0,
                 "tool_calls": {},
+                "models": {},
                 "file_hashes": set(),
                 "file_extensions": {},
             }
@@ -437,6 +498,8 @@ def parse_jsonl(filepath):
                 # Assistant responses
                 if msg_type == "assistant":
                     api += 1
+                    model = inner.get("model", "unknown")
+                    family = model_family(model)
                     if day_bucket is not None:
                         day_bucket["api_calls"] += 1
                         usage_m = (inner.get("usage") or {})
@@ -444,8 +507,7 @@ def parse_jsonl(filepath):
                         day_bucket["output_tokens"] += usage_m.get("output_tokens", 0) or 0
                         day_bucket["cache_read"] += usage_m.get("cache_read_input_tokens", 0) or 0
                         day_bucket["cache_write"] += usage_m.get("cache_creation_input_tokens", 0) or 0
-                    model = inner.get("model", "unknown")
-                    family = model_family(model)
+                        day_bucket["models"][family] = day_bucket["models"].get(family, 0) + 1
                     models[model] = models.get(model, 0) + 1
 
                     usage = inner.get("usage") or {}
@@ -538,6 +600,7 @@ def parse_jsonl(filepath):
             "cache_read": b["cache_read"],
             "cache_write": b["cache_write"],
             "tool_calls": dict(b["tool_calls"]),
+            "models": dict(b.get("models", {})),
             "file_hashes": sorted(b["file_hashes"]),
             "file_extensions": dict(b.get("file_extensions", {})),
         }
@@ -597,7 +660,7 @@ def merge_daily_buckets(target, source):
                 "after_hours_prompts": 0, "lines": 0, "sessions": 0, "cost": 0.0,
                 "first_hhmm": "", "last_hhmm": "",
                 "input_tokens": 0, "output_tokens": 0, "cache_read": 0, "cache_write": 0,
-                "tool_calls": {}, "file_hashes": [],
+                "tool_calls": {}, "models": {}, "file_hashes": [],
             }
         t = target[day_key]
         t["active_sec"] += src.get("active_sec", 0)
@@ -615,6 +678,11 @@ def merge_daily_buckets(target, source):
         for name, count in (src.get("tool_calls") or {}).items():
             t_tools[name] = t_tools.get(name, 0) + count
         t["tool_calls"] = t_tools
+        # Merge models dict
+        t_models = t.get("models") or {}
+        for fam, count in (src.get("models") or {}).items():
+            t_models[fam] = t_models.get(fam, 0) + count
+        t["models"] = t_models
         # Union file_hashes — stored as sorted list for JSON, re-sort after union
         hset = set(t.get("file_hashes") or [])
         hset.update(src.get("file_hashes") or [])
@@ -750,15 +818,47 @@ def compute_quality_score(stats):
     # Reward anyone with 150+ active hours
     bonus += min(1, total_active_hours / 150)  # 150h+ = +1
 
-    # Total bonus capped at +15, final score capped at 115.
-    bonus = min(15.0, bonus)
-    return round(min(115, score + bonus))
+    # --- Q v2 bonuses (added 2026-04): reward judgment + advanced workflows ---
+    # Each caps at 3 pts, stacks on top of the legacy +15 bonus pool.
+
+    # 11. Project breadth (0-3) — rewards working across repos, not grinding one
+    unique_projects = stats.get("total_projects", 0)
+    bonus += min(3, unique_projects / 10)
+
+    # 12. Sub-agent usage (0-3) — Task/Explore delegation = advanced workflow
+    sub_api = stats.get("total_subagent_api_calls", 0)
+    if stats.get("total_api_calls", 0) > 0:
+        sub_pct = sub_api / stats["total_api_calls"]
+        bonus += min(3, (sub_pct / 0.30) * 3)
+
+    # 13. MCP tool adoption (0-3) — count of distinct `mcp__*` tools used
+    mcp_count = sum(1 for t in stats.get("tool_calls", {}) if "mcp__" in t)
+    bonus += min(3, (mcp_count / 5) * 3)
+
+    # 14. Tool diversity (0-3) — Shannon entropy of tool_calls distribution
+    tools = stats.get("tool_calls", {})
+    total_tools = sum(tools.values())
+    if total_tools > 0:
+        entropy = 0.0
+        for v in tools.values():
+            p = v / total_tools
+            if p > 0:
+                entropy -= p * math.log2(p)
+        # Normalize to "uniform over 10 tools" baseline = log2(10) ≈ 3.32
+        bonus += min(3, (entropy / 3.32) * 3)
+
+    # Total bonus capped at +27 (Q-formula only). Badge bonuses are applied
+    # client-side and can push the final score up to the overall ceiling of 200.
+    # The server stores the pre-badge score; the frontend adds badge points on top.
+    bonus = min(27.0, bonus)
+    return round(min(200, score + bonus))
 
 
 def collect_all_stats():
     """Walk ~/.claude/projects/ and aggregate stats with quality metrics."""
     totals = {
         "total_prompts": 0, "total_api_calls": 0, "total_active_hours": 0,
+        "total_subagent_api_calls": 0,
         "total_input_tokens": 0, "total_output_tokens": 0,
         "total_cache_read": 0, "total_cache_write": 0,
         "total_lines_written": 0, "total_cost": 0, "total_sessions": 0,
@@ -830,6 +930,7 @@ def collect_all_stats():
             totals["total_sessions"] += 1
             totals["total_prompts"] += s["human_prompts"]
             totals["total_api_calls"] += sess_api
+            totals["total_subagent_api_calls"] += sub_api
             totals["total_input_tokens"] += sess_inp
             totals["total_output_tokens"] += sess_out
             totals["total_cache_read"] += sess_cr
@@ -995,6 +1096,7 @@ def collect_all_stats():
     all_prompts.sort(key=lambda x: x["timestamp"], reverse=True)
     totals["recent_prompts"] = all_prompts[:500]
     totals["script_version"] = SCRIPT_VERSION
+    totals["kit_version"] = KIT_VERSION_FILE.read_text().strip() if KIT_VERSION_FILE.exists() else ""
 
     # Build projects_data sorted by cost
     totals["projects_data"] = sorted(
@@ -1292,7 +1394,10 @@ def write_local_data(stats):
 def push(stats):
     """POST stats to the leaderboard."""
     stats["name"] = PLAYER_NAME
+    stats["machine_id"] = get_machine_id()
+    stats["hostname"] = get_hostname()
     stats["script_version"] = SCRIPT_VERSION
+    stats["kit_version"] = KIT_VERSION_FILE.read_text().strip() if KIT_VERSION_FILE.exists() else ""
     data = json.dumps(stats).encode()
 
     # Allow self-signed / Tailscale certs
@@ -1401,6 +1506,7 @@ def _update_kit(ctx):
                 relative = parts[1]
 
                 # Route files to their install locations
+                make_exec = False
                 if relative.startswith("design-system/"):
                     dest = home / relative
                 elif relative.startswith("skills/"):
@@ -1410,17 +1516,33 @@ def _update_kit(ctx):
                 elif relative.startswith("hooks/"):
                     # Skip — push_stats.py is updated separately above
                     continue
-                elif relative in ("stack.md", "git-workflow.md", "deploy.md", "api-patterns.md"):
+                elif relative in (
+                    "stack.md", "git-workflow.md", "deploy.md", "api-patterns.md",
+                    # DAK v3.0.0 — new root-level guides that land in ~/.claude/
+                    "stack-decisions.md", "conventions-template.md",
+                ):
                     dest = home / ".claude" / relative
                 elif relative == "project-management.md":
                     dest = home / ".claude" / "project-management-template.md"
                 elif relative.startswith("templates/"):
                     dest = home / ".claude" / relative
+                elif relative.startswith("dak-template/"):
+                    # Project starter that dak-init copies for each new project.
+                    dest = home / ".claude" / relative
+                elif relative.startswith("bin/"):
+                    # CLI tools — land under ~/.claude/bin and need the exec bit.
+                    dest = home / ".claude" / relative
+                    make_exec = True
                 else:
                     continue
 
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_bytes(zf.read(info.filename))
+                if make_exec:
+                    try:
+                        dest.chmod(dest.stat().st_mode | 0o111)
+                    except Exception:
+                        pass
 
         KIT_VERSION_FILE.write_text(remote_version)
     except Exception:

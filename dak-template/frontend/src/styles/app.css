@@ -1,0 +1,8 @@
+/* Project-specific overrides. The DAK design system is imported in
+   main.js via @ds/index.css — put tweaks here, not in the DS. */
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}

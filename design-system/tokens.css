@@ -4,7 +4,35 @@
    Warm-tinted neutrals, Space Grotesk + DM Sans, dark green accent
    ═══════════════════════════════════════════════════════════════ */
 
+/* UAESymbol font — dirham glyph (ê). Ship fonts inline so no project
+   re-downloads them. Use via `font-family: "UAESymbol"` or the
+   <Aed> component from ~/design-system/components/Aed.vue. */
+@font-face {
+  font-family: "UAESymbol";
+  src: url("./fonts/dirham-symbol.woff2") format("woff2"),
+       url("./fonts/dirham-symbol.woff")  format("woff"),
+       url("./fonts/dirham-symbol.ttf")   format("truetype");
+  font-display: swap;
+  font-weight: 700;
+}
+
+/* Usage helper: wrap any element with class="currency-aed" and put
+   the dirham glyph (U+00EA → ê) at the start. */
+.currency-aed {
+  font-family: "UAESymbol", sans-serif;
+  font-size: inherit;
+  color: inherit;
+  font-weight: 700;
+}
+
 :root {
+  /* ── Currency (AED is the DAK default) ──────────────────────── */
+  /* Conversion rate from USD (update here; ripples everywhere).
+     4.5h markets are thin — 3.6725 is the central bank peg. */
+  --usd-to-aed: 3.6725;
+  --currency-symbol: "\u00EA"; /* ê — UAESymbol font maps to the dirham */
+  --currency-code: "AED";
+
   /* ── Typography ─────────────────────────────────────────────── */
   --font-display: 'Space Grotesk', system-ui, sans-serif;
   --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;

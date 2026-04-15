@@ -24,6 +24,9 @@ Load these three fonts in the HTML head (or via your framework's font loading):
 | **Display** | Space Grotesk 500-700 | Headings, stat numbers, nav items, badges, section titles |
 | **Body** | DM Sans 400-700 | All readable text, descriptions, labels, form inputs |
 | **Mono** | JetBrains Mono 400-500 | Code, metrics, timestamps, counts, technical values |
+| **Currency** | UAESymbol (custom) | Dirham symbol glyph — see `dirham-symbol.md` |
+
+> **Currency display:** All your projects show costs in AED using the official UAE Dirham symbol font. Read `design-system/dirham-symbol.md` for setup, conversion helpers, and usage patterns.
 
 ## Core Principles
 
