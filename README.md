@@ -2,8 +2,6 @@
 
 An opinionated setup for Claude Code that teaches it how to build production-grade applications the right way — consistent stack, consistent design, consistent project management, and automatic stats tracking via the DAK leaderboard.
 
-**Live leaderboard:** https://leaderboard.hadismac.com
-
 ---
 
 ## What's inside
